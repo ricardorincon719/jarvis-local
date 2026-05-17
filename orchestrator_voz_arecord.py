@@ -13,7 +13,9 @@ import tempfile
 # Configuración
 STT_MODEL = "modelo_stt"
 LLM_URL = "http://localhost:11434/api/generate"
-LLM_MODEL = "phi3-fast"
+LLM_MODEL = "phi3-fast:latest"
+AUDIO_RATE = 16000
+AUDIO_SECONDS = 5
 
 def speak(text):
     """TTS con eSpeak"""
@@ -21,7 +23,7 @@ def speak(text):
         subprocess.run(['espeak', '-v', 'es', text])
 
 def record():
-    """Graba usando arecord (más estable)"""
+    """Graba usando arecord en formato compatible con Vosk."""
     temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     temp_file.close()
     
@@ -29,8 +31,16 @@ def record():
     input("   Presiona Enter para empezar a grabar...")
     
     print("🔴 Grabando... (habla ahora)")
-    cmd = f'arecord -d 5 -f cd -t wav {temp_file.name}'
-    subprocess.run(cmd, shell=True)
+    cmd = [
+        "arecord",
+        "-d", str(AUDIO_SECONDS),
+        "-r", str(AUDIO_RATE),
+        "-c", "1",
+        "-f", "S16_LE",
+        "-t", "wav",
+        temp_file.name,
+    ]
+    subprocess.run(cmd, check=True)
     
     print("✅ Grabación completada")
     return temp_file.name
@@ -41,7 +51,7 @@ def transcribe(file_path):
     import wave
     
     model = Model(STT_MODEL)
-    rec = KaldiRecognizer(model, 16000)
+    rec = KaldiRecognizer(model, AUDIO_RATE)
     
     wf = wave.open(file_path, "rb")
     while True:
@@ -56,10 +66,20 @@ def transcribe(file_path):
 
 def query_llm(prompt):
     """Consulta al LLM"""
+    prompt_es = f"""
+Eres un asistente local por voz.
+Responde siempre en español claro y natural.
+Sé breve, directo y útil.
+No respondas en inglés salvo que el usuario lo pida explícitamente.
+
+Usuario: {prompt}
+Asistente:
+"""
+
     try:
         response = requests.post(
             LLM_URL,
-            json={"model": LLM_MODEL, "prompt": prompt, "stream": False},
+            json={"model": LLM_MODEL, "prompt": prompt_es, "stream": False},
             timeout=45
         )
         if response.status_code == 200:
@@ -87,13 +107,17 @@ def main():
                 break
             
             if comando == "grabar":
-                # Grabar audio
-                audio_file = record()
-                
-                # Transcribir
-                print("📝 Transcribiendo...")
-                texto = transcribe(audio_file)
-                os.unlink(audio_file)
+                audio_file = None
+                try:
+                    # Grabar audio
+                    audio_file = record()
+                    
+                    # Transcribir
+                    print("📝 Transcribiendo...")
+                    texto = transcribe(audio_file)
+                finally:
+                    if audio_file and os.path.exists(audio_file):
+                        os.unlink(audio_file)
                 
                 if not texto:
                     print("   No te entendí, intenta de nuevo")
