@@ -39,6 +39,8 @@ class HubApiContractTest(unittest.TestCase):
             "/api/v1/scenes/suggest",
             "/api/v1/scenes/<scene_id>/approve",
             "/api/v1/scenes/<scene_id>/reject",
+            "/api/v1/scene-prompts/pending",
+            "/api/v1/scene-prompts/<prompt_id>/decision",
         }
 
         self.assertTrue(expected.issubset(rules))

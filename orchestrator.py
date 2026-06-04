@@ -17,6 +17,7 @@ import sys
 import threading
 from typing import Dict, Optional
 from flask import Flask, Response, request, jsonify, stream_with_context
+from scene_prompts import ScenePromptStore
 from scene_memory import (
     detect_candidates,
     list_events,
@@ -97,6 +98,7 @@ HTTP_PORT = int(os.getenv("PEARL_HUB_PORT", "5006"))
 PEARL_PRODUCT = os.getenv("PEARL_PRODUCT", "PEARL Hub").strip() or "PEARL Hub"
 PEARL_EDITION = os.getenv("PEARL_EDITION", "hub").strip().lower() or "hub"
 PEARL_VERSION = os.getenv("PEARL_VERSION", "0.7.0-beta.1").strip() or "0.7.0-beta.1"
+scene_prompt_store = ScenePromptStore()
 PEARL_API_VERSION = "v1"
 
 # ============================================================
@@ -139,7 +141,8 @@ def json_object_or_error():
     if not isinstance(data, dict):
         return None, (jsonify({"status": "error", "error": "invalid_json_object"}), 400)
     return data, None
-
+def enqueue_candidate_prompts(candidates):
+    return [scene_prompt_store.enqueue_candidate(scene) for scene in candidates]
 
 def iter_json_objects(payload: str):
     decoder = json.JSONDecoder()
@@ -543,10 +546,12 @@ def api_memory_event():
         if error is not None:
             return error
         result = record_event(data)
+        prompts = enqueue_candidate_prompts(result["candidates_created"])
         return jsonify({
             "status": "ok",
             "event": result["event"],
-            "candidates_created": result["candidates_created"]
+            "candidates_created": result["candidates_created"],
+            "prompts_created": prompts,
         })
     except ValueError as e:
         return jsonify({"status": "error", "error": str(e)}), 400
@@ -577,9 +582,11 @@ def api_scenes_detect():
     """
     try:
         candidates = detect_candidates()
+        prompts = enqueue_candidate_prompts(candidates)
         return jsonify({
             "status": "ok",
-            "candidates_created": candidates
+            "candidates_created": candidates,
+            "prompts_created": prompts,
         })
     except Exception as e:
         return jsonify({"status": "error", "error": f"Error interno: {str(e)}"}), 500
@@ -649,18 +656,74 @@ def api_scene_suggest():
         if error is not None:
             return error
         suggestion = suggest_scene(context)
+        prompt = None
         if not suggestion:
             return jsonify({
                 "status": "ok",
                 "suggestion": None,
                 "requires_confirmation": True
             })
+        scene = suggestion.get("scene") or {}
+        if scene.get("status") == "candidate":
+            prompt = scene_prompt_store.enqueue_candidate(scene)
+        elif scene.get("status") == "approved":
+            prompt = scene_prompt_store.enqueue_activation(scene, suggestion.get("suggestion") or "Escena sugerida")
         return jsonify({
             "status": "ok",
-            **suggestion
+            **suggestion,
+            "prompt": prompt,
         })
     except Exception as e:
         return jsonify({"status": "error", "error": f"Error interno: {str(e)}"}), 500
+
+
+@app.route('/scene-prompts/pending', methods=['GET'])
+@app.route('/api/v1/scene-prompts/pending', methods=['GET'])
+def api_scene_prompts_pending():
+    """Lista propuestas pendientes para PEARL Client."""
+    try:
+        kind = request.args.get("kind")
+        return jsonify({
+            "status": "ok",
+            "prompts": scene_prompt_store.list_pending(kind=kind),
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "error": f"Error interno: {str(e)}"}), 500
+
+
+@app.route('/scene-prompts/<prompt_id>/decision', methods=['POST'])
+@app.route('/api/v1/scene-prompts/<prompt_id>/decision', methods=['POST'])
+def api_scene_prompt_decision(prompt_id):
+    """Registra una decision idempotente. Nunca ejecuta acciones fisicas."""
+    try:
+        data, error = json_object_or_error()
+        if error is not None:
+            return error
+        prompt, changed = scene_prompt_store.decide(
+            prompt_id=prompt_id,
+            decision=data.get("decision"),
+            idempotency_key=data.get("idempotency_key"),
+        )
+        if not prompt:
+            return jsonify({"status": "error", "error": "Propuesta no encontrada"}), 404
+
+        scene = None
+        if changed and prompt.get("kind") == "candidate_approval":
+            scene_status = "approved" if prompt.get("decision") == "accept" else "rejected"
+            scene = update_scene_status(prompt.get("scene_id"), scene_status)
+
+        return jsonify({
+            "status": "ok",
+            "prompt": prompt,
+            "scene": scene,
+            "decision_applied": changed,
+            "executed": False,
+        })
+    except ValueError as e:
+        return jsonify({"status": "error", "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "error": f"Error interno: {str(e)}"}), 500
+
 
 def run_http_server():
     """

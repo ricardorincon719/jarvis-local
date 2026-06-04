@@ -35,12 +35,12 @@ _lock = threading.Lock()
 def _ensure_storage():
     os.makedirs(MEMORY_DIR, exist_ok=True)
     for path, legacy_path in ((EVENTS_FILE, LEGACY_EVENTS_FILE), (SCENES_FILE, LEGACY_SCENES_FILE)):
-        if os.path.exists(path):
-            continue
-        if os.path.abspath(path) != os.path.abspath(legacy_path) and os.path.exists(legacy_path):
-            shutil.copy2(legacy_path, path)
-        else:
-            _write_json(path, [])
+        if not os.path.exists(path):
+            if os.path.abspath(path) != os.path.abspath(legacy_path) and os.path.exists(legacy_path):
+                shutil.copy2(legacy_path, path)
+            else:
+                _write_json(path, [])
+        os.chmod(path, 0o600)
 
 
 def _read_json(path: str) -> List[Dict]:
@@ -59,6 +59,7 @@ def _write_json(path: str, data: List[Dict]):
     with open(tmp_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2)
         fh.write("\n")
+    os.chmod(tmp_path, 0o600)
     os.replace(tmp_path, path)
 
 
