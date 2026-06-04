@@ -9,6 +9,7 @@ candidatas. Este modulo no ejecuta musica ni luces.
 import json
 import os
 import re
+import shutil
 import threading
 import uuid
 from collections import defaultdict
@@ -17,9 +18,13 @@ from typing import Dict, List, Optional, Tuple
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MEMORY_DIR = os.getenv("JARVIS_LOCAL_SCENE_MEMORY_DIR", os.path.join(BASE_DIR, "memory"))
+LEGACY_MEMORY_DIR = os.path.join(BASE_DIR, "memory")
+DEFAULT_MEMORY_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "pearl-home", "scene-memory")
+MEMORY_DIR = os.getenv("JARVIS_LOCAL_SCENE_MEMORY_DIR") or DEFAULT_MEMORY_DIR
 EVENTS_FILE = os.path.join(MEMORY_DIR, "events.json")
 SCENES_FILE = os.path.join(MEMORY_DIR, "learned_scenes.json")
+LEGACY_EVENTS_FILE = os.path.join(LEGACY_MEMORY_DIR, "events.json")
+LEGACY_SCENES_FILE = os.path.join(LEGACY_MEMORY_DIR, "learned_scenes.json")
 
 DEFAULT_MIN_REPETITIONS = 6
 DEFAULT_MIN_UNIQUE_DAYS = 6
@@ -29,8 +34,12 @@ _lock = threading.Lock()
 
 def _ensure_storage():
     os.makedirs(MEMORY_DIR, exist_ok=True)
-    for path in (EVENTS_FILE, SCENES_FILE):
-        if not os.path.exists(path):
+    for path, legacy_path in ((EVENTS_FILE, LEGACY_EVENTS_FILE), (SCENES_FILE, LEGACY_SCENES_FILE)):
+        if os.path.exists(path):
+            continue
+        if os.path.abspath(path) != os.path.abspath(legacy_path) and os.path.exists(legacy_path):
+            shutil.copy2(legacy_path, path)
+        else:
             _write_json(path, [])
 
 

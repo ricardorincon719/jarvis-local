@@ -1,0 +1,21 @@
+[Unit]
+Description=PEARL Hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO_DIR@
+Environment=PYTHONUNBUFFERED=1
+Environment="PEARL_PRODUCT=PEARL Hub"
+Environment=PEARL_EDITION=hub
+Environment=PEARL_VERSION=0.7.0-beta.1
+Environment=JARVIS_LOCAL_SCENE_MEMORY_DIR=@DATA_DIR@
+EnvironmentFile=-@CONFIG_FILE@
+ExecStart=@PYTHON_BIN@ @REPO_DIR@/orchestrator.py --http
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

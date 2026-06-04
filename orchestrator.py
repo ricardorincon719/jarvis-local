@@ -11,6 +11,7 @@ Cerebros:
 
 import requests
 import json
+import os
 import time
 import sys
 import threading
@@ -91,12 +92,25 @@ SYSTEM_PROMPTS = {
 }
 
 # Configuración HTTP API
-HTTP_HOST = "0.0.0.0"
-HTTP_PORT = 5006
+HTTP_HOST = os.getenv("PEARL_HUB_HOST", "0.0.0.0")
+HTTP_PORT = int(os.getenv("PEARL_HUB_PORT", "5006"))
+PEARL_PRODUCT = os.getenv("PEARL_PRODUCT", "PEARL Hub").strip() or "PEARL Hub"
+PEARL_EDITION = os.getenv("PEARL_EDITION", "hub").strip().lower() or "hub"
+PEARL_VERSION = os.getenv("PEARL_VERSION", "0.7.0-beta.1").strip() or "0.7.0-beta.1"
+PEARL_API_VERSION = "v1"
 
 # ============================================================
 # FUNCIONES CORE (reutilizables CLI y HTTP)
 # ============================================================
+
+def product_identity() -> Dict:
+    return {
+        "name": PEARL_PRODUCT,
+        "edition": PEARL_EDITION,
+        "version": PEARL_VERSION,
+        "api_version": PEARL_API_VERSION,
+    }
+
 
 def brain_timeout(brain: Dict):
     return (brain.get("connect_timeout", 5), brain.get("read_timeout", 150))
@@ -422,6 +436,7 @@ def main_cli():
 app = Flask(__name__)
 
 @app.route('/process', methods=['POST'])
+@app.route('/api/v1/process', methods=['POST'])
 def api_process():
     """
     Endpoint principal para procesar consultas desde nodos externos (G05, etc.)
@@ -464,6 +479,7 @@ def api_process():
         }), 500
 
 @app.route('/health', methods=['GET'])
+@app.route('/api/v1/health', methods=['GET'])
 def api_health():
     """
     Endpoint de salud para monitoreo
@@ -471,12 +487,14 @@ def api_health():
     return jsonify({
         "orquestador": "central",
         "version": "2.0.0-dual",
+        "product": product_identity(),
         "modo": "http",
         "cerebros": get_brains_health(),
         "timestamp": time.time()
     })
 
 @app.route('/intents', methods=['GET'])
+@app.route('/api/v1/intents', methods=['GET'])
 def api_intents():
     """
     Devuelve las palabras clave de enrutamiento para sincronización con otros nodos
@@ -501,6 +519,7 @@ def api_intents():
     })
 
 @app.route('/status', methods=['GET'])
+@app.route('/api/v1/status', methods=['GET'])
 def api_status():
     """
     Estado simple para health checks rápidos
@@ -508,10 +527,12 @@ def api_status():
     return jsonify({
         "status": "online",
         "orquestador": "central",
+        "product": product_identity(),
         "timestamp": time.time()
     })
 
 @app.route('/memory/event', methods=['POST'])
+@app.route('/api/v1/memory/event', methods=['POST'])
 def api_memory_event():
     """
     Registra un evento estructurado para aprendizaje de escenas.
@@ -533,6 +554,7 @@ def api_memory_event():
         return jsonify({"status": "error", "error": f"Error interno: {str(e)}"}), 500
 
 @app.route('/memory/events', methods=['GET'])
+@app.route('/api/v1/memory/events', methods=['GET'])
 def api_memory_events():
     """
     Devuelve eventos recientes registrados por la memoria.
@@ -548,6 +570,7 @@ def api_memory_events():
         return jsonify({"status": "error", "error": f"Error interno: {str(e)}"}), 500
 
 @app.route('/scenes/detect', methods=['POST'])
+@app.route('/api/v1/scenes/detect', methods=['POST'])
 def api_scenes_detect():
     """
     Fuerza una pasada de deteccion de patrones y crea candidatas si aplica.
@@ -562,6 +585,7 @@ def api_scenes_detect():
         return jsonify({"status": "error", "error": f"Error interno: {str(e)}"}), 500
 
 @app.route('/scenes', methods=['GET'])
+@app.route('/api/v1/scenes', methods=['GET'])
 def api_scenes():
     """
     Lista escenas aprendidas. Filtro opcional: ?status=candidate|approved|rejected|archived
@@ -576,6 +600,7 @@ def api_scenes():
         return jsonify({"status": "error", "error": f"Error interno: {str(e)}"}), 500
 
 @app.route('/scenes/candidates', methods=['GET'])
+@app.route('/api/v1/scenes/candidates', methods=['GET'])
 def api_scene_candidates():
     """
     Lista solo escenas candidatas pendientes de aprobacion humana.
@@ -586,6 +611,7 @@ def api_scene_candidates():
     })
 
 @app.route('/scenes/<scene_id>/approve', methods=['POST'])
+@app.route('/api/v1/scenes/<scene_id>/approve', methods=['POST'])
 def api_scene_approve(scene_id):
     """
     Aprueba una escena candidata. No la ejecuta.
@@ -599,6 +625,7 @@ def api_scene_approve(scene_id):
         return jsonify({"status": "error", "error": f"Error interno: {str(e)}"}), 500
 
 @app.route('/scenes/<scene_id>/reject', methods=['POST'])
+@app.route('/api/v1/scenes/<scene_id>/reject', methods=['POST'])
 def api_scene_reject(scene_id):
     """
     Rechaza una escena candidata.
@@ -612,6 +639,7 @@ def api_scene_reject(scene_id):
         return jsonify({"status": "error", "error": f"Error interno: {str(e)}"}), 500
 
 @app.route('/scenes/suggest', methods=['POST'])
+@app.route('/api/v1/scenes/suggest', methods=['POST'])
 def api_scene_suggest():
     """
     Sugiere una escena segun contexto. Siempre requiere confirmacion humana.
@@ -638,7 +666,7 @@ def run_http_server():
     """
     Inicia el servidor Flask
     """
-    print(f"\n🌐 Iniciando servidor HTTP en {HTTP_HOST}:{HTTP_PORT}")
+    print(f"\n🌐 Iniciando {PEARL_PRODUCT} {PEARL_VERSION} en {HTTP_HOST}:{HTTP_PORT}")
     print(f"   Endpoints disponibles:")
     print(f"   • POST /process  - Procesar consulta")
     print(f"   • GET  /health   - Estado de cerebros")
