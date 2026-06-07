@@ -11,6 +11,7 @@ Cerebros:
 
 import requests
 import json
+import hmac
 import os
 import time
 import sys
@@ -30,6 +31,18 @@ from scene_memory import (
 # ============================================================
 # CONFIGURACIÓN
 # ============================================================
+
+CORE_GATEWAY_TOKEN = os.getenv("PEARL_CORE_GATEWAY_TOKEN", "").strip()
+
+
+def core_gateway_required():
+    if not CORE_GATEWAY_TOKEN:
+        return None
+    token = (request.headers.get("X-PEARL-Core-Gateway") or "").strip()
+    if hmac.compare_digest(token, CORE_GATEWAY_TOKEN):
+        return None
+    return jsonify({"status": "error", "error": "core_gateway_required"}), 403
+
 
 # Configuración de cerebros
 BRAINS = {
@@ -623,6 +636,9 @@ def api_scene_approve(scene_id):
     """
     Aprueba una escena candidata. No la ejecuta.
     """
+    gateway_error = core_gateway_required()
+    if gateway_error is not None:
+        return gateway_error
     try:
         scene = update_scene_status(scene_id, "approved")
         if not scene:
@@ -637,6 +653,9 @@ def api_scene_reject(scene_id):
     """
     Rechaza una escena candidata.
     """
+    gateway_error = core_gateway_required()
+    if gateway_error is not None:
+        return gateway_error
     try:
         scene = update_scene_status(scene_id, "rejected")
         if not scene:
@@ -695,6 +714,9 @@ def api_scene_prompts_pending():
 @app.route('/api/v1/scene-prompts/<prompt_id>/decision', methods=['POST'])
 def api_scene_prompt_decision(prompt_id):
     """Registra una decision idempotente. Nunca ejecuta acciones fisicas."""
+    gateway_error = core_gateway_required()
+    if gateway_error is not None:
+        return gateway_error
     try:
         data, error = json_object_or_error()
         if error is not None:

@@ -84,6 +84,28 @@ class ScenePromptApiTest(unittest.TestCase):
             self.assertFalse(second.get_json()["decision_applied"])
             update_status.assert_called_once_with("scene_test", "approved")
 
+    def test_decision_requires_core_gateway_token_when_configured(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = ScenePromptStore(str(Path(temp_dir) / "prompts.json"))
+            prompt = store.enqueue_candidate(SCENE)
+
+            with patch.object(orchestrator, "scene_prompt_store", store), patch.object(
+                orchestrator, "CORE_GATEWAY_TOKEN", "secret"
+            ):
+                blocked = self.client.post(
+                    f"/api/v1/scene-prompts/{prompt['id']}/decision",
+                    json={"decision": "accept", "idempotency_key": "decision-1"},
+                )
+                allowed = self.client.post(
+                    f"/api/v1/scene-prompts/{prompt['id']}/decision",
+                    headers={"X-PEARL-Core-Gateway": "secret"},
+                    json={"decision": "accept", "idempotency_key": "decision-1"},
+                )
+
+            self.assertEqual(blocked.status_code, 403)
+            self.assertEqual(blocked.get_json()["error"], "core_gateway_required")
+            self.assertEqual(allowed.status_code, 200)
+
     def test_pending_endpoint_returns_prompts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ScenePromptStore(str(Path(temp_dir) / "prompts.json"))

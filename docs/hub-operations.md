@@ -49,7 +49,9 @@ journalctl --user -u pearl-hub.service -n 100 --no-pager
 ## Scene Prompts
 
 PEARL Hub persists pending proposals in the private scene memory directory. Candidate
-approval decisions are idempotent and never execute physical actions.
+approval decisions are idempotent and never execute physical actions. In production-like
+Beta, set `PEARL_CORE_GATEWAY_TOKEN` to the same value as Core so prompt decisions and
+scene approve/reject calls must arrive through the Core gateway.
 
 ```bash
 curl http://127.0.0.1:5006/api/v1/scene-prompts/pending
