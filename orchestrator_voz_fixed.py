@@ -9,6 +9,7 @@ import json
 import requests
 import subprocess
 import tempfile
+from assistant_identity import build_assistant_prompt
 
 # Configuración
 STT_MODEL = "modelo_stt"
@@ -77,7 +78,7 @@ def query_llm(prompt):
     try:
         response = requests.post(
             LLM_URL,
-            json={"model": LLM_MODEL, "prompt": prompt, "stream": False},
+            json={"model": LLM_MODEL, "prompt": build_assistant_prompt(prompt), "stream": False},
             timeout=45
         )
         if response.status_code == 200:
@@ -146,4 +147,3 @@ if __name__ == "__main__":
         exit(1)
     
     main()
-

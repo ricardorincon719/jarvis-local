@@ -8,6 +8,7 @@ import os
 import json
 import requests
 import subprocess
+from assistant_identity import build_assistant_prompt
 import tempfile
 
 # Configuración
@@ -66,15 +67,10 @@ def transcribe(file_path):
 
 def query_llm(prompt):
     """Consulta al LLM"""
-    prompt_es = f"""
-Eres un asistente local por voz.
-Responde siempre en español claro y natural.
-Sé breve, directo y útil.
-No respondas en inglés salvo que el usuario lo pida explícitamente.
-
-Usuario: {prompt}
-Asistente:
-"""
+    prompt_es = build_assistant_prompt(
+        prompt,
+        "Eres un asistente local por voz. Se breve, directo, claro y natural.",
+    )
 
     try:
         response = requests.post(

@@ -11,6 +11,7 @@ import wave
 import pyaudio
 import vosk
 import subprocess
+from assistant_identity import build_assistant_prompt
 
 # Configuración
 STT_MODEL = "modelo_stt"
@@ -78,7 +79,11 @@ def record():
 
 def query_llm(prompt):
     try:
-        r = requests.post(LLM_URL, json={"model": LLM_MODEL, "prompt": prompt, "stream": False}, timeout=45)
+        r = requests.post(
+            LLM_URL,
+            json={"model": LLM_MODEL, "prompt": build_assistant_prompt(prompt), "stream": False},
+            timeout=45,
+        )
         return r.json().get("response", "Error") if r.status_code == 200 else "Error"
     except:
         return "Error de conexión"

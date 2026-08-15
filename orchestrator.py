@@ -18,6 +18,7 @@ import sys
 import threading
 from typing import Dict, Optional
 from flask import Flask, Response, request, jsonify, stream_with_context
+from assistant_identity import build_assistant_prompt, identity_instructions
 from scene_prompts import ScenePromptStore
 from scene_memory import (
     detect_candidates,
@@ -86,17 +87,17 @@ OLLAMA_OPTIONS = {
 
 SYSTEM_PROMPTS = {
     "rapido": (
-        "Eres Jarvis/Nodo dentro de PEARL HOME. Responde en español, breve y claro. "
+        f"{identity_instructions()}\nResponde de forma breve y clara. "
         "Si el usuario pide controlar luces, musica, seguridad o hardware, no ejecutes nada: "
         "explica que necesitas confirmacion del usuario y una orden validada por el orquestador."
     ),
     "cotidiano": (
-        "Eres Jarvis/Nodo dentro de PEARL HOME. Responde en español natural, directo y util. "
+        f"{identity_instructions()}\nResponde de forma natural, directa y util. "
         "Mantén la respuesta compacta salvo que el usuario pida detalle. "
         "No inventes capacidades del sistema. Para acciones fisicas, pide confirmacion humana."
     ),
     "critico": (
-        "Eres Jarvis/Nodo dentro de PEARL HOME. Analiza con rigor y responde en español. "
+        f"{identity_instructions()}\nAnaliza con rigor. "
         "Responde para una pantalla de chat: natural, conversacional y compacto. "
         "No devuelvas JSON, Markdown técnico ni bloques de código salvo que el usuario lo pida. "
         "Para temas de seguridad, sistema, planes o riesgo, resume hechos, riesgos y siguiente accion recomendada en texto claro. "
@@ -132,7 +133,7 @@ def brain_timeout(brain: Dict):
 
 def build_prompt(brain_name: str, prompt: str) -> str:
     system_prompt = SYSTEM_PROMPTS.get(brain_name, SYSTEM_PROMPTS["cotidiano"])
-    return f"{system_prompt}\n\nUsuario: {prompt}\nAsistente:"
+    return build_assistant_prompt(prompt, system_prompt.replace(identity_instructions(), "", 1))
 
 def ollama_payload(brain_name: str, prompt: str, stream: bool) -> Dict:
     brain = BRAINS[brain_name]
