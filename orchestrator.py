@@ -452,6 +452,12 @@ def main_cli():
 
 app = Flask(__name__)
 
+
+@app.before_request
+def require_core_gateway():
+    """Todas las rutas HTTP exigen el token compartido con PEARL Core."""
+    return core_gateway_required()
+
 @app.route('/process', methods=['POST'])
 @app.route('/api/v1/process', methods=['POST'])
 def api_process():
@@ -637,9 +643,6 @@ def api_scene_approve(scene_id):
     """
     Aprueba una escena candidata. No la ejecuta.
     """
-    gateway_error = core_gateway_required()
-    if gateway_error is not None:
-        return gateway_error
     try:
         scene = update_scene_status(scene_id, "approved")
         if not scene:
@@ -654,9 +657,6 @@ def api_scene_reject(scene_id):
     """
     Rechaza una escena candidata.
     """
-    gateway_error = core_gateway_required()
-    if gateway_error is not None:
-        return gateway_error
     try:
         scene = update_scene_status(scene_id, "rejected")
         if not scene:
@@ -715,9 +715,6 @@ def api_scene_prompts_pending():
 @app.route('/api/v1/scene-prompts/<prompt_id>/decision', methods=['POST'])
 def api_scene_prompt_decision(prompt_id):
     """Registra una decision idempotente. Nunca ejecuta acciones fisicas."""
-    gateway_error = core_gateway_required()
-    if gateway_error is not None:
-        return gateway_error
     try:
         data, error = json_object_or_error()
         if error is not None:
@@ -752,6 +749,8 @@ def run_http_server():
     """
     Inicia el servidor Flask
     """
+    if not CORE_GATEWAY_TOKEN:
+        raise SystemExit("Falta PEARL_CORE_GATEWAY_TOKEN: el Hub no abre HTTP sin token.")
     print(f"\n🌐 Iniciando {PEARL_PRODUCT} {PEARL_VERSION} en {HTTP_HOST}:{HTTP_PORT}")
     print(f"   Endpoints disponibles:")
     print(f"   • POST /process  - Procesar consulta")

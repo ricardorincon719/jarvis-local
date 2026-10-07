@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import orchestrator
 
@@ -44,6 +45,31 @@ class HubApiContractTest(unittest.TestCase):
         }
 
         self.assertTrue(expected.issubset(rules))
+
+
+    def test_every_route_requires_core_gateway_token_when_configured(self):
+        with patch.object(orchestrator, "CORE_GATEWAY_TOKEN", "secret"):
+            for route in ("/status", "/api/v1/health", "/scenes"):
+                for headers in ({}, {"X-PEARL-Core-Gateway": "otro"}):
+                    response = self.client.get(route, headers=headers)
+                    self.assertEqual(response.status_code, 403, route)
+                    self.assertEqual(
+                        response.get_json()["error"], "core_gateway_required"
+                    )
+
+            response = self.client.get(
+                "/status", headers={"X-PEARL-Core-Gateway": "secret"}
+            )
+            self.assertEqual(response.status_code, 200)
+
+    def test_http_server_refuses_to_start_without_token(self):
+        with patch.object(orchestrator, "CORE_GATEWAY_TOKEN", ""), patch.object(
+            orchestrator.app, "run"
+        ) as run:
+            with self.assertRaises(SystemExit):
+                orchestrator.run_http_server()
+
+        run.assert_not_called()
 
 
 if __name__ == "__main__":
