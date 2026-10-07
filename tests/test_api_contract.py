@@ -63,13 +63,22 @@ class HubApiContractTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
 
     def test_http_server_refuses_to_start_without_token(self):
-        with patch.object(orchestrator, "CORE_GATEWAY_TOKEN", ""), patch.object(
-            orchestrator.app, "run"
-        ) as run:
+        with patch.object(orchestrator, "CORE_GATEWAY_TOKEN", ""), patch(
+            "waitress.serve"
+        ) as serve:
             with self.assertRaises(SystemExit):
                 orchestrator.run_http_server()
 
-        run.assert_not_called()
+        serve.assert_not_called()
+
+    def test_http_server_runs_on_waitress(self):
+        with patch.object(orchestrator, "CORE_GATEWAY_TOKEN", "secret"), patch(
+            "waitress.serve"
+        ) as serve:
+            orchestrator.run_http_server()
+
+        serve.assert_called_once()
+        self.assertIs(serve.call_args.args[0], orchestrator.app)
 
 
 if __name__ == "__main__":

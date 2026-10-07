@@ -762,8 +762,10 @@ def run_http_server():
     print(f"   • POST /scenes/suggest - Sugerir escena")
     print(f"\n   Presiona Ctrl+C para detener\n")
     
-    # threaded=True permite múltiples requests concurrentes
-    app.run(host=HTTP_HOST, port=HTTP_PORT, threaded=True, debug=False)
+    from waitress import serve
+
+    # Waitress: servidor de producción, un proceso con varios hilos.
+    serve(app, host=HTTP_HOST, port=HTTP_PORT, threads=8)
 
 # ============================================================
 # ENTRY POINT - SELECCIÓN DE MODO
