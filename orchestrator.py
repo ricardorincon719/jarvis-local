@@ -4,9 +4,10 @@ Orquestador Central - Asistente Local Distribuido
 Modo Dual: CLI interactivo + HTTP API para integración con nodos externos
 
 Cerebros:
-- Rápido: qwen2.5:0.5b (local o remoto)
-- Cotidiano: phi3-fast (local)
-- Crítico: phi3-fast (local)
+- Rápido: qwen2.5:0.5b (local)
+- Cotidiano: qwen2.5:0.5b (local)
+- Crítico: llama3.2:3b (local)
+Son el respaldo local del sistema: la conversación principal la atiende Nova.
 """
 
 import requests
@@ -56,14 +57,14 @@ BRAINS = {
     },
     "cotidiano": {
         "url": "http://localhost:11434/api/generate",
-        "model": "phi3:mini",
+        "model": "qwen2.5:0.5b",
         "connect_timeout": 5,
         "read_timeout": 150,
         "description": "Tareas cotidianas, conversación general"
     },
     "critico": {
         "url": "http://localhost:11434/api/generate",
-        "model": "phi3:mini",
+        "model": "llama3.2:3b",
         "connect_timeout": 5,
         "read_timeout": 240,
         "description": "Análisis profundo, tareas críticas"
@@ -186,37 +187,56 @@ def query_brain(brain_name: str, prompt: str) -> Optional[Dict]:
     print(f"   ⏱️  Timeout conexión/lectura: {brain_timeout(brain)} segundos")
     print(f"   📝 Prompt: {prompt[:60]}...")
     
+    # Siempre en streaming: el read_timeout cuenta entre fragmentos y no para
+    # la respuesta entera, así una respuesta larga no se pierde por tiempo y,
+    # si se corta a la mitad, se devuelve lo que alcanzó a llegar.
+    start_time = time.time()
+    parts = []
     try:
-        start_time = time.time()
-        
         print(f"   🔄 Enviando request a {brain['url']}...")
-        response = requests.post(
+        with requests.post(
             brain["url"],
-            json=ollama_payload(brain_name, prompt, stream=False),
-            timeout=brain_timeout(brain)
-        )
-        
+            json=ollama_payload(brain_name, prompt, stream=True),
+            timeout=brain_timeout(brain),
+            stream=True,
+        ) as response:
+            if response.status_code != 200:
+                print(f"   ❌ HTTP Error: {response.status_code}")
+                return {
+                    "brain": brain_name,
+                    "error": f"HTTP {response.status_code}: {response.text[:100]}",
+                    "status": "error"
+                }
+            for payload in response.iter_lines(decode_unicode=True):
+                if not payload:
+                    continue
+                for chunk in iter_json_objects(payload):
+                    parts.append(chunk.get("response", ""))
+                    if chunk.get("done"):
+                        break
+
         elapsed_time = time.time() - start_time
         print(f"   ✅ Respuesta recibida en {elapsed_time:.2f}s")
-        
-        if response.status_code == 200:
-            result = response.json()
+        return {
+            "brain": brain_name,
+            "model": brain["model"],
+            "response": "".join(parts),
+            "time": round(elapsed_time, 2),
+            "status": "success"
+        }
+
+    except requests.exceptions.Timeout:
+        if parts:
+            print(f"   ⚠️  Respuesta cortada tras {brain.get('read_timeout', 150)}s sin datos; "
+                  "se devuelve lo recibido")
             return {
                 "brain": brain_name,
                 "model": brain["model"],
-                "response": result.get("response", ""),
-                "time": round(elapsed_time, 2),
-                "status": "success"
+                "response": "".join(parts),
+                "time": round(time.time() - start_time, 2),
+                "status": "success",
+                "truncated": True
             }
-        else:
-            print(f"   ❌ HTTP Error: {response.status_code}")
-            return {
-                "brain": brain_name,
-                "error": f"HTTP {response.status_code}: {response.text[:100]}",
-                "status": "error"
-            }
-            
-    except requests.exceptions.Timeout:
         print(f"   ❌ TIMEOUT sin datos después de {brain.get('read_timeout', 150)} segundos")
         return {
             "brain": brain_name,
